@@ -9,7 +9,7 @@
 Summary: Get monitorring stats of rabbitmq for blackbird
 Name: %{name}
 Version: %{version}
-Release: %{release}
+Release: %{release}%{?dist}
 Source0: %{name}-%{unmangled_version}.tar.gz
 License: UNKNOWN
 Group: Development/Libraries
@@ -36,7 +36,7 @@ Project Info
 python setup.py build
 
 %install
-python setup.py install --single-version-externally-managed -O1 --root=$RPM_BUILD_ROOT --record=INSTALLED_FILES
+python setup.py install --skip-build --root=$RPM_BUILD_ROOT --record=INSTALLED_FILES
 mkdir -p $RPM_BUILD_ROOT/%{blackbird_conf_dir}
 cp -p rabbitmq.cfg $RPM_BUILD_ROOT/%{blackbird_conf_dir}/rabbitmq.cfg
 
