@@ -1,7 +1,7 @@
 %define _unpackaged_files_terminate_build 0
 %define name blackbird-rabbitmq
-%define version 0.1.1
-%define unmangled_version 0.1.1
+%define version 0.1.2
+%define unmangled_version 0.1.2
 %define release 1
 
 %define blackbird_conf_dir /etc/blackbird/conf.d
@@ -47,6 +47,9 @@ rm -rf $RPM_BUILD_ROOT
 %defattr(-,root,root)
 
 %changelog
+* Wed Jan  8 2014 makochi <makocchi@gmail.com> - 0.1.2
+- version up to 0.1.2
+
 * Fri Nov 13 2013 makochi <makocchi@gmail.com> - 0.1.1
 - add rabbitmq.cfg
 

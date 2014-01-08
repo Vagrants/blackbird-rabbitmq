@@ -4,280 +4,318 @@
 detect vhost and queuename and put rabbitmq stats from API
 """
 
+import requests
 import json
-import httplib
-import base64
-import socket
+import re
 
 from blackbird.plugins import base
 
-
 class ConcreteJob(base.JobBase):
     """
-    This Class is required for blackbird plugin module.
+    This Class is called by "Executor"
+    Get rabbitmq's info,
+    and send to specified zabbix server.
     """
 
     def __init__(self, options, queue=None, logger=None):
         super(ConcreteJob, self).__init__(options, queue, logger)
 
-    def _api_get(self, url):
+    def build_items(self):
         """
-        Get status from rabbitmq api
+        main loop
         """
 
-        if self.options['ssl']:
-            if not 'ssl_key_file' in self.options or not 'ssl_cert_file' in self.options:
-                raise ValueError('Pleases specify ssl_key_file and ssl_cert_file...')
-            conn = httplib.HTTPSConnection(self.options['api_host'],
-                                           self.options['api_port'],
-                                           self.options['ssl_key_file'],
-                                           self.options['ssl_cert_file'],
-                                           timeout=self.options['api_timeout'])
-        else:
-            conn = httplib.HTTPConnection(self.options['api_host'],
-                                          self.options['api_port'],
-                                          timeout=self.options['api_timeout'])
+        # get vhost status
+        self._vhost_stat()
 
-        headers = {"Authorization":
-                       "Basic " + base64.b64encode(self.options['api_user'] +
-                                                   ":" +
-                                                   self.options['api_pass'])}
+        # get queue status
+        self._queue_stat()
+
+    def build_discovery_items(self):
+        """
+        main loop for lld
+        """
+
+        # lld vhost name
+        self._vhost_lld()
+
+        # lld queue name
+        self._queue_lld()
+
+    def _enqueue(self, item):
+        """
+        put into queue
+        """
+
+        self.queue.put(item, block=False)
+        self.logger.debug(
+            'Inserted to queue {key}:{value}'
+            ''.format(key=item.key, value=item.value)
+        )
+
+    def _request(self, uri):
+        """
+        Request http connection and return contents.
+        """
+
+        auth = (self.options['api_user'], self.options['api_pass'])
+        url = (
+            'http://{host}:{port}{uri}'
+            ''.format(
+                host=self.options['api_host'],
+                port=self.options['api_port'],
+                uri=uri
+            )
+        )
 
         try:
-            conn.request("GET", url, "", headers)
-        except socket.error, ex:
-            raise Exception("Could not connect: {0}".format(ex))
-        resp = conn.getresponse()
+            response = requests.get(url,
+                                    timeout=self.options['timeout'],
+                                    auth=auth,
+                                    verify=False)
+        except requests.exceptions.RequestException:
+            self.logger.error(
+                'Can not connect to {url}'
+                ''.format(url=url)
+            )
+            return None
 
-        if resp.status != 200:
-            raise Exception("Received %d %s for path %s\n%s"
-                                  % (resp.status,
-                                     resp.reason,
-                                     url,
-                                     resp.read()))
-
-        return resp.read()
-
-    def _queue_stat(self):
-        """
-        Get stats of queues
-        """
-
-        lld_values = []
-        entries = json.loads(self._api_get("/api/queues"))
-
-        if len(entries) == 0:
-            self.logger.debug('no message queues found')
-            return
-
-        for entry in entries:
-
-            lld_values.append([entry['vhost'], entry['name']])
-
-            for key, value in entry.items():
-                items = {
-                    "vhost": entry['vhost'],
-                    "queuename": entry['name'],
-                    "zabbix_key": "rabbitmq.stat.queue"
-                }
-                item = RabbitmqItem(
-                    key=key,
-                    value=value,
-                    host=self.options['hostname'],
-                    items=items
-                )
-                self.queue.put(item, block=False)
-
-                self.logger.debug(
-                    ('Inserted to queue {0}'.format(item.data))
-                )
-
-        dis_item = RabbitmqDiscoveryItem(
-            key='rabbitmq.stat.queue.LLD',
-            value=lld_values,
-            host=self.options['hostname'],
-            lld_type='queue'
-        )
-        self.queue.put(dis_item, block=False)
+        if response.status_code == 200:
+            return response.content
+        else:
+            self.logger.error(
+                'Can not get status from {url} status:{status}'
+                ''.format(url=url, status=response.status_code)
+            )
+            return None
 
     def _vhost_stat(self):
         """
         Get stats of vhost
         """
 
-        lld_values = []
-        entries = json.loads(self._api_get("/api/vhosts"))
+        # get connection status from api
         con_status = self._vhost_connection()
 
-        if len(entries) == 0:
-            self.logger.debug('no vhost found')
-            return
+        api_body = self._request('/api/vhosts')
+        if api_body:
+            for entry in json.loads(api_body):
 
-        for entry in entries:
+                vhost = entry['name']
 
-            lld_values.append(entry['name'])
-
-            items = {
-                "vhost": entry['name'],
-                "zabbix_key": "rabbitmq.stat.vhost"
-            }
-
-            for key, value in entry.items():
-                if key == "message_stats":
-                    for mstats in ["confirm", "publish"]:
-                        item = RabbitmqItem(
-                                key=mstats,
-                                value=value[mstats],
-                                host=self.options['hostname'],
-                                items=items
+                for key, value in entry.items():
+                    if key == 'message_stats':
+                        for mstats in ['confirm', 'publish']:
+                            item = RabbitmqVhostItem(
+                                    key='{0},{1}'.format(vhost, mstats),
+                                    value=value[mstats],
+                                    host=self.options['hostname'],
+                            )
+                            self._enqueue(item)
+                    elif key == 'name':
+                        continue
+                    elif re.search(r'_details$', key):
+                        continue
+                    else:
+                        item = RabbitmqVhostItem(
+                            key='{0},{1}'.format(vhost, key),
+                            value=value,
+                            host=self.options['hostname']
                         )
-                        self.queue.put(item, block=False)
-                else:
-                    item = RabbitmqItem(
-                        key=key,
-                        value=value,
+                        self._enqueue(item)
+
+                # set connection info
+                for status in ['starting', 'tuning', 'opening', 'running', 'blocking',
+                               'blocked', 'closing', 'closed']:
+                    status_value = 0
+                    if vhost in con_status:
+                        if status in con_status[vhost]:
+                            status_value = con_status[vhost][status]
+
+                    item = RabbitmqVhostItem(
+                        key='{0},connection_{1}'.format(vhost, status),
+                        value=status_value,
                         host=self.options['hostname'],
-                        items=items
                     )
-                    self.queue.put(item, block=False)
-
-                self.logger.debug(
-                    ('Inserted to queue {0}'.format(item.data))
-                )
-
-            for st in ["starting", "tuning", "opening", "running", "blocking",
-                       "blocked", "closing", "closed"]:
-                con_value = 0
-                if entry['name'] in con_status:
-                    if st in con_status[entry['name']]:
-                        con_value = con_status[entry['name']][st]
-
-                item = RabbitmqItem(
-                    key="connection_" + st,
-                    value=con_value,
-                    host=self.options['hostname'],
-                    items=items
-                )
-                self.queue.put(item, block=False)
-                self.logger.debug(
-                    ('Inserted to queue {0}'.format(item.data))
-                )
-
-        dis_item = RabbitmqDiscoveryItem(
-            key='rabbitmq.stat.vhost.LLD',
-            value=lld_values,
-            host=self.options['hostname'],
-            lld_type='vhost'
-        )
-        self.queue.put(dis_item, block=False)
+                    self._enqueue(item)
 
     def _vhost_connection(self):
         """
         Get stats of vhost connection
         """
 
-        ret = {}
-        entries = json.loads(self._api_get("/api/connections"))
+        con_hash = {}
 
-        if len(entries) > 0:
+        api_body = self._request('/api/connections')
+        if api_body:
+            for entry in json.loads(api_body):
 
-            for entry in entries:
                 vhost = entry['vhost']
                 state = entry['state']
                 
-                if not vhost in ret:
-                    ret[vhost] = {}
-                if state in ret[vhost]:
-                    ret[vhost][state] += 1
-                else:
-                    ret[vhost][state] = 1
+                if not vhost in con_hash:
+                    con_hash[vhost] = {
+                        "starting":0,
+                        "tuning":0,
+                        "opening":0,
+                        "running":0,
+                        "blocking":0,
+                        "blocked":0,
+                        "closing":0,
+                        "closed":0,
+                    }
 
-        return ret
+                con_hash[vhost][state] += 1
 
-    def looped_method(self):
+        return con_hash
+
+    def _queue_stat(self):
         """
-        Get stats data of rabbitmq.
-        Method name must be "looped_method".
+        Get stats of queues
         """
 
-        self._queue_stat()
-        self._vhost_stat()
+        api_body = self._request('/api/queues')
+        if api_body:
+            for entry in json.loads(api_body):
 
-        self.logger.info('Enqueued RabbitmqValue')
+                # Queue name
+                name = entry['name']
+
+                # Virtual host this queue belongs to
+                vhost = entry['vhost']
+
+                for key in ["auto_delete", "consumers", "durable",
+                            "idle_since", "memory", "messages",
+                            "messages_ready", "status"]:
+                    item = RabbitmqQueueItem(
+                        key='{0},{1},{2}'.format(vhost, name, key),
+                        value=entry[key],
+                        host=self.options['hostname'],
+                    )
+                    self._enqueue(item)
+
+                # backing_queue_status
+                for key in entry['backing_queue_status']:
+                    if key == 'delta':
+                        continue
+                    item = RabbitmqQueueItem(
+                        key='{0},{1},backing_queue_status,{2}'.format(vhost, name, key),
+                        value=entry['backing_queue_status'][key],
+                        host=self.options['hostname'],
+                    )
+                    self._enqueue(item)
+
+                # message_stats
+                item = RabbitmqQueueItem(
+                    key='{0},{1},message_stats,publish'.format(vhost, name),
+                    value=entry['message_stats']['publish'],
+                    host=self.options['hostname'],
+                )
+                self._enqueue(item)
+                item = RabbitmqQueueItem(
+                    key='{0},{1},message_stats,publish,rate'.format(vhost, name),
+                    value=entry['message_stats']['publish_details']['rate'],
+                    host=self.options['hostname'],
+                )
+                self._enqueue(item)
+
+                # messages_details rate
+                item = RabbitmqQueueItem(
+                    key='{0},{1},messages,rate'.format(vhost, name),
+                    value=entry['messages_details']['rate'],
+                    host=self.options['hostname'],
+                )
+                self._enqueue(item)
+
+                # messages_ready_details rate
+                item = RabbitmqQueueItem(
+                    key='{0},{1},messages_ready,rate'.format(vhost, name),
+                    value=entry['messages_ready_details']['rate'],
+                    host=self.options['hostname'],
+                )
+                self._enqueue(item)
+
+    def _vhost_lld(self):
+        """
+        Discovery vhost name
+        """
+
+        lld_vhosts = []
+
+        api_body = self._request('/api/vhosts')
+        if api_body:
+            for entry in json.loads(api_body):
+                lld_vhosts.append(entry['name'])
+
+        if len(lld_vhosts) > 0:
+            item = base.DiscoveryItem(
+                key='rabbitmq.vhost.LLD',
+                value=[{'{#VHOST}': vhost} for vhost in lld_vhosts],
+                host=self.options['hostname']
+            )
+            self._enqueue(item)
+
+    def _queue_lld(self):
+        """
+        Discovery queue name
+        """
+
+        lld_queues = []
+
+        api_body = self._request('/api/queues')
+        if api_body:
+            for entry in json.loads(api_body):
+                lld_queues.append([entry['vhost'], entry['name']])
+
+        if len(lld_queues) > 0:
+            item = base.DiscoveryItem(
+                key='rabbitmq.queue.LLD',
+                value=[{'{#VHOST}': value[0], '{#QUEUENAME}': value[1]} for value in lld_queues],
+                host=self.options['hostname']
+            )
+            self._enqueue(item)
 
 
-class RabbitmqItem(base.ItemBase):
+class RabbitmqVhostItem(base.ItemBase):
     """
     Enqueued item. This Class has required attribute "data".
     """
 
-    def __init__(self, key, value, host, items):
-        super(RabbitmqItem, self).__init__(key, value, host)
+    def __init__(self, key, value, host):
+        super(RabbitmqVhostItem, self).__init__(key, value, host)
 
         self.__data = dict()
-        self.items = items
-        if 'queuename' in items:
-            self._generate_queue()
-        else:
-            self._generate()
+        self._generate()
 
     @property
     def data(self):
-
         return self.__data
 
     def _generate(self):
-        self.__data['host'] = self.host
-        self.__data['key'] = (
-            '{zabbix_key}[{vhost},{key}]'
-            ''.format(zabbix_key=self.items['zabbix_key'],
-                           vhost=self.items['vhost'],
-                             key=self.key)
-        )
+        self.__data['key'] = 'rabbitmq.stat.vhost[{0}]'.format(self.key)
         self.__data['value'] = self.value
-
-    def _generate_queue(self):
         self.__data['host'] = self.host
-        self.__data['key'] = (
-            '{zabbix_key}[{vhost},{queuename},{key}]'
-            ''.format(zabbix_key=self.items['zabbix_key'],
-                           vhost=self.items['vhost'],
-                       queuename=self.items['queuename'],
-                             key=self.key)
-        )
-        self.__data['value'] = self.value
 
 
-class RabbitmqDiscoveryItem(base.ItemBase):
+class RabbitmqQueueItem(base.ItemBase):
     """
-    Queue Item for "zabbix discovery".
+    Enqueued item. This Class has required attribute "data".
     """
 
-    def __init__(self, key, value, host, lld_type):
-        super(RabbitmqDiscoveryItem, self).__init__(key, value, host)
+    def __init__(self, key, value, host):
+        super(RabbitmqQueueItem, self).__init__(key, value, host)
 
         self.__data = dict()
-        self._generate(lld_type)
+        self._generate()
 
     @property
     def data(self):
         return self.__data
 
-    def _generate(self, lld_type):
+    def _generate(self):
+        self.__data['key'] = 'rabbitmq.stat.queue[{0}]'.format(self.key)
+        self.__data['value'] = self.value
         self.__data['host'] = self.host
-        self.__data['clock'] = self.clock
-        self.__data['key'] = self.key
-
-        if lld_type == "queue":
-            value = {
-                'data': [{'{#VHOST}': v[0],'{#QUEUENAME}': v[1]} for v in self.value],
-            }
-        else:
-            value = {
-                'data': [{'{#VHOST}': v} for v in self.value],
-            }
-
-        self.__data['value'] = json.dumps(value)
 
 
 class Validator(base.ValidatorBase):
@@ -295,10 +333,9 @@ class Validator(base.ValidatorBase):
             "api_user = string(default='guest')",
             "api_pass = string(default='guest')",
             "api_host = string(default='localhost')",
-            "api_port = integer(0, 65535, default=15672)",
-            "api_timeout = integer(0, 600, default=3)",
-            "ssl = boolean(default=False)",
-            "hostname = string(default={0})".format(self.gethostname()),
+            "api_port = integer(1, 65535, default=15672)",
+            "timeout = integer(0, 600, default=3)",
+            "hostname = string(default={0})".format(self.detect_hostname()),
         )
         return self.__spec
 
