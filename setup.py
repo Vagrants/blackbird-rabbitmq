@@ -13,7 +13,7 @@ def read(fname):
 
 setup(
     name='blackbird-rabbitmq',
-    version='0.1.2',
+    version='0.1.3',
     description=(
         'Get monitorring stats of rabbitmq for blackbird '
     ),
