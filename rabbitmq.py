@@ -307,30 +307,6 @@ class ConcreteJob(base.JobBase):
                               [{'{#VHOST}': value[0], '{#QUEUENAME}': value[1]} for value in lld_queues])
 
 
-class RabbitmqVhostItem(base.ItemBase):
-    """
-    Enqueued item. This Class has required attribute "data".
-    """
-
-    def __init__(self, key, value, host):
-        super(RabbitmqVhostItem, self).__init__(key, value, host)
-
-        self.__data = dict()
-        self._generate()
-
-    @property
-    def data(self):
-        return self.__data
-
-    def _generate(self):
-        self.__data['key'] = 'rabbitmq.stat.vhost[{0}]'.format(self.key)
-        if isinstance(self.value, bool):
-            self.__data['value'] = int(self.value)
-        else:
-            self.__data['value'] = self.value
-        self.__data['host'] = self.host
-
-
 class RabbitmqItem(base.ItemBase):
     """
     Enqueued item. This Class has required attribute "data".
