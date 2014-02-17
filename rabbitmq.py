@@ -6,7 +6,6 @@ __VERSION__ = '0.1.4'
 
 import requests
 import json
-import re
 
 from blackbird.plugins import base
 
