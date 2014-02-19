@@ -30,5 +30,6 @@ setup(
         ('/opt/blackbird/plugins', ['rabbitmq.py']),
         ('/etc/blackbird/conf.d', ['rabbitmq.cfg'])
     ],
+    test_suite='tests',
 )
 

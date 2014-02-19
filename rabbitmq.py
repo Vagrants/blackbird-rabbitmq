@@ -9,6 +9,7 @@ import json
 
 from blackbird.plugins import base
 
+
 class ConcreteJob(base.JobBase):
     """
     This Class is called by "Executor"
@@ -135,17 +136,26 @@ class ConcreteJob(base.JobBase):
                 self._enqueue('rabbitmq.version', 'Unknown')
 
             if 'management_version' in overview:
-                self._enqueue('rabbitmq.management.version', overview['management_version'])
+                self._enqueue(
+                    'rabbitmq.management.version',
+                    overview['management_version']
+                )
             else:
                 self._enqueue('rabbitmq.management.version', 'Unknown')
 
             if 'erlang_version' in overview:
-                self._enqueue('rabbitmq.erlang.version', overview['erlang_version'])
+                self._enqueue(
+                    'rabbitmq.erlang.version',
+                    overview['erlang_version']
+                )
             else:
                 self._enqueue('rabbitmq.erlang.version', 'Unknown')
 
             if 'erlang_full_version' in overview:
-                self._enqueue('rabbitmq.erlang.full.version', overview['erlang_full_version'])
+                self._enqueue(
+                    'rabbitmq.erlang.full.version',
+                    overview['erlang_full_version']
+                )
             else:
                 self._enqueue('rabbitmq.erlang.full.version', 'Unknown')
 
@@ -165,38 +175,59 @@ class ConcreteJob(base.JobBase):
 
                 # message_stats
                 if 'message_stats' in entry:
-                    self._enqueue('rabbitmq.stat.vhost[{0},message_stats,confirm]'.format(vhost),
-                                  entry['message_stats']['confirm'])
-                    self._enqueue('rabbitmq.stat.vhost[{0},message_stats,confirm,rate]'.format(vhost),
-                                  entry['message_stats']['confirm']['rate'])
-                    self._enqueue('rabbitmq.stat.vhost[{0},message_stats,publish]'.format(vhost),
-                                  entry['message_stats']['publish'])
-                    self._enqueue('rabbitmq.stat.vhost[{0},message_stats,publish,rate]'.format(vhost),
-                                  entry['message_stats']['publish']['rate'])
+                    self._enqueue(
+                        'rabbitmq.stat.vhost[{0},message_stats,confirm]'
+                        ''.format(vhost),
+                        entry['message_stats']['confirm']
+                    )
+                    self._enqueue(
+                        'rabbitmq.stat.vhost[{0},message_stats,confirm,rate]'
+                        ''.format(vhost),
+                        entry['message_stats']['confirm']['rate']
+                    )
+                    self._enqueue(
+                        'rabbitmq.stat.vhost[{0},message_stats,publish]'
+                        ''.format(vhost),
+                        entry['message_stats']['publish']
+                    )
+                    self._enqueue(
+                        'rabbitmq.stat.vhost[{0},message_stats,publish,rate]'
+                        ''.format(vhost),
+                        entry['message_stats']['publish']['rate']
+                    )
 
                 # other items
-                for key in ['messages', 'messages_ready', 'messages_unacknowledged',
+                for key in ['messages', 'messages_ready',
+                            'messages_unacknowledged',
                             'recv_oct', 'send_oct']:
                     if key in entry:
-                        self._enqueue('rabbitmq.stat.vhost[{0},{1}]'.format(vhost, key),
-                                      entry[key])
-                        self._enqueue('rabbitmq.stat.vhost[{0},{1},rate]'.format(vhost, key),
-                                      entry['{0}_details'.format(key)]['rate'])
+                        self._enqueue(
+                            'rabbitmq.stat.vhost[{0},{1}]'.format(vhost, key),
+                            entry[key]
+                        )
+                        self._enqueue(
+                            'rabbitmq.stat.vhost[{0},{1},rate]'
+                            ''.format(vhost, key),
+                            entry['{0}_details'.format(key)]['rate']
+                        )
 
                 # tracing
                 self._enqueue('rabbitmq.stat.vhost[{0},tracing]'.format(vhost),
                               entry['tracing'])
 
                 # set connection info
-                for status in ['starting', 'tuning', 'opening', 'running', 'blocking',
-                               'blocked', 'closing', 'closed']:
+                for status in ['starting', 'tuning', 'opening', 'running',
+                               'blocking', 'blocked', 'closing', 'closed']:
                     status_value = 0
                     if vhost in con_status:
                         if status in con_status[vhost]:
                             status_value = con_status[vhost][status]
 
-                    self._enqueue('rabbitmq.stat.vhost[{0},connection_{1}]'.format(vhost, status),
-                                  status_value)
+                    self._enqueue(
+                        'rabbitmq.stat.vhost[{0},connection_{1}]'
+                        ''.format(vhost, status),
+                        status_value
+                    )
 
     def _vhost_connection(self):
         """
@@ -211,17 +242,17 @@ class ConcreteJob(base.JobBase):
 
                 vhost = entry['vhost']
                 state = entry['state']
-                
+
                 if not vhost in con_hash:
                     con_hash[vhost] = {
-                        "starting":0,
-                        "tuning":0,
-                        "opening":0,
-                        "running":0,
-                        "blocking":0,
-                        "blocked":0,
-                        "closing":0,
-                        "closed":0,
+                        "starting": 0,
+                        "tuning": 0,
+                        "opening": 0,
+                        "running": 0,
+                        "blocking": 0,
+                        "blocked": 0,
+                        "closing": 0,
+                        "closed": 0,
                     }
 
                 con_hash[vhost][state] += 1
@@ -245,35 +276,60 @@ class ConcreteJob(base.JobBase):
 
                 for key in ["auto_delete", "consumers", "durable",
                             "idle_since", "memory", "status"]:
-                    self._enqueue('rabbitmq.stat.queue[{0},{1},{2}]'.format(vhost, name, key),
-                                  entry[key])
+                    self._enqueue(
+                        'rabbitmq.stat.queue[{0},{1},{2}]'
+                        ''.format(vhost, name, key),
+                        entry[key]
+                    )
 
                 # backing_queue_status
                 for key in entry['backing_queue_status']:
                     if key == 'delta':
                         continue
-                    self._enqueue('rabbitmq.stat.queue[{0},{1},backing_queue_status,{2}]'.format(vhost, name, key),
-                                  entry['backing_queue_status'][key])
+                    self._enqueue(
+                        'rabbitmq.stat.queue[{0},{1},backing_queue_status,{2}]'
+                        ''.format(vhost, name, key),
+                        entry['backing_queue_status'][key]
+                    )
 
                 # messages
                 if 'messages' in entry:
-                    self._enqueue('rabbitmq.stat.queue[{0},{1},messages]'.format(vhost, name),
-                                  entry['messages'])
-                    self._enqueue('rabbitmq.stat.queue[{0},{1},messages,rate]'.format(vhost, name),
-                                  entry['messages_details']['rate'])
+                    self._enqueue(
+                        'rabbitmq.stat.queue[{0},{1},messages]'
+                        ''.format(vhost, name),
+                        entry['messages']
+                    )
+                    self._enqueue(
+                        'rabbitmq.stat.queue[{0},{1},messages,rate]'
+                        ''.format(vhost, name),
+                        entry['messages_details']['rate']
+                    )
                 # messages_ready
                 if 'messages_ready' in entry:
-                    self._enqueue('rabbitmq.stat.queue[{0},{1},messages_ready]'.format(vhost, name),
-                                  entry['messages_ready'])
-                    self._enqueue('rabbitmq.stat.queue[{0},{1},messages_ready,rate]'.format(vhost, name),
-                                  entry['messages_ready_details']['rate'])
+                    self._enqueue(
+                        'rabbitmq.stat.queue[{0},{1},messages_ready]'
+                        ''.format(vhost, name),
+                        entry['messages_ready']
+                    )
+                    self._enqueue(
+                        'rabbitmq.stat.queue[{0},{1},messages_ready,rate]'
+                        ''.format(vhost, name),
+                        entry['messages_ready_details']['rate']
+                    )
 
                 # message_stats
                 if 'message_stats' in entry:
-                    self._enqueue('rabbitmq.stat.queue[{0},{1},message_stats,publish]'.format(vhost, name),
-                                  entry['message_stats']['publish'])
-                    self._enqueue('rabbitmq.stat.queue[{0},{1},message_stats,publish,rate]'.format(vhost, name),
-                                  entry['message_stats']['publish']['rate'])
+                    self._enqueue(
+                        'rabbitmq.stat.queue[{0},{1},message_stats,publish]'
+                        ''.format(vhost, name),
+                        entry['message_stats']['publish']
+                    )
+                    self._enqueue(
+                        'rabbitmq.stat.queue'
+                        '[{0},{1},message_stats,publish,rate]'
+                        ''.format(vhost, name),
+                        entry['message_stats']['publish']['rate']
+                    )
 
     def _vhost_lld(self):
         """
@@ -288,7 +344,10 @@ class ConcreteJob(base.JobBase):
                 lld_vhosts.append(entry['name'])
 
         if len(lld_vhosts) > 0:
-            self._enqueue_lld('rabbitmq.vhost.LLD', [{'{#VHOST}': vhost} for vhost in lld_vhosts])
+            self._enqueue_lld(
+                'rabbitmq.vhost.LLD',
+                [{'{#VHOST}': vhost} for vhost in lld_vhosts]
+            )
 
     def _queue_lld(self):
         """
@@ -303,8 +362,10 @@ class ConcreteJob(base.JobBase):
                 lld_queues.append([entry['vhost'], entry['name']])
 
         if len(lld_queues) > 0:
-            self._enqueue_lld('rabbitmq.queue.LLD',
-                              [{'{#VHOST}': value[0], '{#QUEUENAME}': value[1]} for value in lld_queues])
+            self._enqueue_lld(
+                'rabbitmq.queue.LLD',
+                [{'{#VHOST}': v[0], '{#QUEUENAME}': v[1]} for v in lld_queues]
+            )
 
 
 class RabbitmqItem(base.ItemBase):
@@ -351,4 +412,3 @@ class Validator(base.ValidatorBase):
             "hostname = string(default={0})".format(self.detect_hostname()),
         )
         return self.__spec
-
