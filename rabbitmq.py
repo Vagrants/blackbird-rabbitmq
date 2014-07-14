@@ -20,6 +20,20 @@ class ConcreteJob(base.JobBase):
     def __init__(self, options, queue=None, logger=None):
         super(ConcreteJob, self).__init__(options, queue, logger)
 
+        self._message_stats_objects = [
+            'publish',        # Count of messages published
+            'publish_in',     # Count of messages published "in" to an exchange
+            'publish_out',    # Count of messages published "out" to an exchange
+            'confirm',        # Count of messages confirmed
+            'deliver',        # Count of messages delivered in acknowledgement mode to consumers
+            'deliver_noack',  # Count of messages delivered in no-acknowledgement mode to consumers
+            'deliver_get',    # Sum of all four of the above
+            'get',            # Count of messages delivered in acknowledgement mode in response to basic.get
+            'get_noack',      # Count of messages delivered in no-acknowledgement mode in response to basic.get
+            'redeliver',      # Count of subset of messages in deliver_get which had the redelivered flag set
+            'return',         # Count of messages returned to publisher as unroutable
+        ]
+
     def build_items(self):
         """
         main loop
@@ -167,20 +181,6 @@ class ConcreteJob(base.JobBase):
         # get connection status from api
         con_status = self._vhost_connection()
 
-        _message_stats_objects = [
-            'publish',        # Count of messages published
-            'publish_in',     # Count of messages published "in" to an exchange
-            'publish_out',    # Count of messages published "out" to an exchange
-            'confirm',        # Count of messages confirmed
-            'deliver',        # Count of messages delivered in acknowledgement mode to consumers
-            'deliver_noack',  # Count of messages delivered in no-acknowledgement mode to consumers
-            'deliver_get',    # Sum of all four of the above
-            'get',            # Count of messages delivered in acknowledgement mode in response to basic.get
-            'get_noack',      # Count of messages delivered in no-acknowledgement mode in response to basic.get
-            'redeliver',      # Count of subset of messages in deliver_get which had the redelivered flag set
-            'return',         # Count of messages returned to publisher as unroutable
-        ]
-
         api_body = self._request('/api/vhosts')
         if api_body:
             for entry in json.loads(api_body):
@@ -189,7 +189,7 @@ class ConcreteJob(base.JobBase):
 
                 # message_stats
                 if 'message_stats' in entry:
-                    for _object in _message_stats_objects:
+                    for _object in self._message_stats_objects:
                         _object_details = '{0}_details'.format(_object)
                         if _object in entry['message_stats']:
                             self._enqueue(
@@ -339,17 +339,20 @@ class ConcreteJob(base.JobBase):
                     )
                 # message_stats
                 if 'message_stats' in entry:
-                    self._enqueue(
-                        'rabbitmq.stat.queue[{0},{1},message_stats,publish]'
-                        ''.format(vhost, name),
-                        entry['message_stats']['publish']
-                    )
-                    self._enqueue(
-                        'rabbitmq.stat.queue'
-                        '[{0},{1},message_stats,publish,rate]'
-                        ''.format(vhost, name),
-                        entry['message_stats']['publish']['rate']
-                    )
+                    for _object in self._message_stats_objects:
+                        _object_details = '{0}_details'.format(_object)
+                        if _object in entry['message_stats']:
+                            self._enqueue(
+                                'rabbitmq.stat.queue[{0},message_stats,{1}]'
+                                ''.format(vhost, _object),
+                                entry['message_stats'][_object]
+                            )
+                            self._enqueue(
+                                'rabbitmq.stat.queuet[{0},message_stats,{1},rate]'
+                                ''.format(vhost, _object),
+                                entry['message_stats'][_object_details]['rate']
+
+                            )
 
     def _vhost_lld(self):
         """

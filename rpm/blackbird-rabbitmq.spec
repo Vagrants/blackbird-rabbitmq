@@ -2,7 +2,7 @@
 %define name blackbird-rabbitmq
 %define version 0.1.5
 %define unmangled_version 0.1.5
-%define release 1
+%define release 2
 
 %define blackbird_conf_dir /etc/blackbird/conf.d
 
