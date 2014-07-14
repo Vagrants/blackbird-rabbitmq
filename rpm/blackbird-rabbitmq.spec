@@ -1,8 +1,8 @@
 %define _unpackaged_files_terminate_build 0
 %define name blackbird-rabbitmq
-%define version 0.1.4
-%define unmangled_version 0.1.4
-%define release 1
+%define version 0.1.5
+%define unmangled_version 0.1.5
+%define release 2
 
 %define blackbird_conf_dir /etc/blackbird/conf.d
 
@@ -48,6 +48,9 @@ rm -rf $RPM_BUILD_ROOT
 %defattr(-,root,root)
 
 %changelog
+* Mon Jul 14 2014 makochi <makocchi@gmail.com> - 0.1.5
+- version up to 0.1.5
+
 * Mon Feb 17 2014 makochi <makocchi@gmail.com> - 0.1.4
 - version up to 0.1.4
 - add ping item
