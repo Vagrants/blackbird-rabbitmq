@@ -2,7 +2,7 @@
 # -*- encoding: utf-8 -*-
 # pylint: disable=C0111,C0301,R0903
 
-__VERSION__ = '0.1.4'
+__VERSION__ = '0.1.5'
 
 import requests
 import json
@@ -167,6 +167,20 @@ class ConcreteJob(base.JobBase):
         # get connection status from api
         con_status = self._vhost_connection()
 
+        _message_stats_objects = [
+            'publish',        # Count of messages published
+            'publish_in',     # Count of messages published "in" to an exchange
+            'publish_out',    # Count of messages published "out" to an exchange
+            'confirm',        # Count of messages confirmed
+            'deliver',        # Count of messages delivered in acknowledgement mode to consumers
+            'deliver_noack',  # Count of messages delivered in no-acknowledgement mode to consumers
+            'deliver_get',    # Sum of all four of the above
+            'get',            # Count of messages delivered in acknowledgement mode in response to basic.get
+            'get_noack',      # Count of messages delivered in no-acknowledgement mode in response to basic.get
+            'redeliver',      # Count of subset of messages in deliver_get which had the redelivered flag set
+            'return',         # Count of messages returned to publisher as unroutable
+        ]
+
         api_body = self._request('/api/vhosts')
         if api_body:
             for entry in json.loads(api_body):
@@ -175,26 +189,20 @@ class ConcreteJob(base.JobBase):
 
                 # message_stats
                 if 'message_stats' in entry:
-                    self._enqueue(
-                        'rabbitmq.stat.vhost[{0},message_stats,confirm]'
-                        ''.format(vhost),
-                        entry['message_stats']['confirm']
-                    )
-                    self._enqueue(
-                        'rabbitmq.stat.vhost[{0},message_stats,confirm,rate]'
-                        ''.format(vhost),
-                        entry['message_stats']['confirm']['rate']
-                    )
-                    self._enqueue(
-                        'rabbitmq.stat.vhost[{0},message_stats,publish]'
-                        ''.format(vhost),
-                        entry['message_stats']['publish']
-                    )
-                    self._enqueue(
-                        'rabbitmq.stat.vhost[{0},message_stats,publish,rate]'
-                        ''.format(vhost),
-                        entry['message_stats']['publish']['rate']
-                    )
+                    for _object in _message_stats_objects:
+                        _object_details = '{0}_details'.format(_object)
+                        if _object in entry['message_stats']:
+                            self._enqueue(
+                                'rabbitmq.stat.vhost[{0},message_stats,{1}]'
+                                ''.format(vhost, _object),
+                                entry['message_stats'][_object]
+                            )
+                            self._enqueue(
+                                'rabbitmq.stat.vhost[{0},message_stats,{1},rate]'
+                                ''.format(vhost, _object),
+                                entry['message_stats'][_object_details]['rate']
+
+                            )
 
                 # other items
                 for key in ['messages', 'messages_ready',
@@ -265,7 +273,20 @@ class ConcreteJob(base.JobBase):
         """
 
         api_body = self._request('/api/queues')
+
         if api_body:
+
+            _queue_stat_objects = [
+                'auto_delete',
+                'consumer_utilisation',
+                'consumers',
+                'durable',
+                'exclusive_consumer_tag',
+                'idle_since',
+                'memory',
+                'state',
+            ]
+
             for entry in json.loads(api_body):
 
                 # Queue name
@@ -274,13 +295,13 @@ class ConcreteJob(base.JobBase):
                 # Virtual host this queue belongs to
                 vhost = entry['vhost']
 
-                for key in ["auto_delete", "consumers", "durable",
-                            "idle_since", "memory", "status"]:
-                    self._enqueue(
-                        'rabbitmq.stat.queue[{0},{1},{2}]'
-                        ''.format(vhost, name, key),
-                        entry[key]
-                    )
+                for _object in _queue_stat_objects:
+                    if _object in entry:
+                        self._enqueue(
+                            'rabbitmq.stat.queue[{0},{1},{2}]'
+                            ''.format(vhost, name, _object),
+                            entry[_object]
+                        )
 
                 # backing_queue_status
                 for key in entry['backing_queue_status']:
@@ -316,7 +337,6 @@ class ConcreteJob(base.JobBase):
                         ''.format(vhost, name),
                         entry['messages_ready_details']['rate']
                     )
-
                 # message_stats
                 if 'message_stats' in entry:
                     self._enqueue(

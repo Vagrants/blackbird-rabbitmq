@@ -6,8 +6,7 @@ import unittest
 class TestCodeFormat(unittest.TestCase):
 
     def test_pep8(self):
-        pep8style = pep8.StyleGuide()
-        result = pep8style.check_files(['rabbitmq.py'])
-        self.assertEqual(result.total_errors, 0,
+        fchecker = pep8.Checker('rabbitmq.py', show_source=True, ignore='E501')
+        file_errors = fchecker.check_all()
+        self.assertEqual(file_errors, 0,
                          "Found code style errors (and warnings).")
-
